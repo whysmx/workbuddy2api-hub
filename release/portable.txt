@@ -23,6 +23,7 @@
 LICENSE
 README.md
 dashboard.html
+agent-setup.html
 console_tail.py
 ops/aliyun/install-updater.sh
 ops/aliyun/workbuddy2api-hub-updater.py
@@ -52,6 +53,7 @@ pricing/pricing.json
 wb_accounts.py
 wb_activity.py
 wb_agents.py
+wb_agent_setup.py
 wb_atrest.py
 wb_catalog.py
 wb_egress.py

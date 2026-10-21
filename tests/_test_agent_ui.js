@@ -1,20 +1,4 @@
-/* The agent-config card must send a payload the backend actually accepts.
-
-   Two bugs shipped through a green test suite because nothing exercised the
-   real front-end functions:
-
-     1. applyAgent()/restoreAgent() posted {client_id}, while the handler only
-        read payload["client"] - every click returned HTTP 400 "client is
-        required";
-     2. the models list was read from an undeclared identifier
-        (AGENTS_MODELS instead of AGENT_MODELS), so the browser raised
-        "AGENTS_MODELS is not defined" before the request left the page.
-
-   This suite loads the shipped dashboard.html scripts into a stub DOM, calls
-   the real applyAgent()/restoreAgent() and asserts what they post, so a
-   renamed field or an undeclared identifier fails here instead of in the
-   browser. Run with Node.
-*/
+/* Windows downloads replace server-side apply/restore. Model-selection tests remain. */
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -119,27 +103,18 @@ global.fetch = (url, opts) => {
 
 // ---- load the shipped page scripts ---------------------------------------
 const api = new Function(script + `
-  window.__applyAgent = applyAgent;
-  window.__restoreAgent = restoreAgent;
-  window.__loadAgents = loadAgents;
-  window.__setAgents = function(data, models){ AGENTS_DATA = data; AGENT_MODELS = models; };
-  // 直接注入勾选态时三态要一起摆好：configured=false 会让「空集合」被读成
-  // 「全都要」，只塞集合会测出一个假绿。
   window.__setSelection = function(list, configured){
     AGENT_MODEL_SELECTION = new Set((list || []).map(String));
     MODEL_SELECTION_CONFIGURED = configured !== false;
     MODEL_SELECTION_SAVED = MODEL_SELECTION_CONFIGURED ? new Set(AGENT_MODEL_SELECTION) : null;
   };
   window.__setModelsData = function(list){ MODELS_DATA = list; };
-  return { applyAgent, restoreAgent, loadAgents,
-           setAgents: window.__setAgents, setSelection: window.__setSelection,
-           setModelsData: window.__setModelsData,
-           loadAgentsAvailability, switchMainTab,
+  return { loadAgents, copyAgentUrl, loadAgentsAvailability, switchMainTab,
+           setSelection: window.__setSelection, setModelsData: window.__setModelsData,
            loadAgentModelSelection, applyModelPickAction, isModelPicked,
            syncModelPickBoxes, saveModelSelection,
            selection: function(){ return Array.from(AGENT_MODEL_SELECTION); },
            isConfigured: function(){ return MODEL_SELECTION_CONFIGURED; },
-           agentsAvailable: function(){ return AGENTS_AVAILABLE; },
            currentTab: function(){ return currentMainTab; } };`)();
 
 const CLIENTS = [{
@@ -159,97 +134,34 @@ const check = (label, cond, extra) => {
 };
 
 (async () => {
-  const seed = () => api.setAgents({
-    clients: CLIENTS, keys: [], models: MODELS,
-    gateway: {base_url: 'http://127.0.0.1:8788/v1'},
-    model_embedding_clients: ['dsh'],
-  }, MODELS);
   const select = list => { SELECTED.models = list; api.setSelection(list); };
-  seed();
   select(['model-a', 'model-b']);
-
-  // The regression that reached the user: an undeclared identifier inside
-  // applyAgent() must not escape as a runtime error.
   requests.length = 0;
-  await api.applyAgent('claude-code', null);
-  const applyReq = requests.find(r => r.url.indexOf('/agents/apply') !== -1);
-  check('applyAgent posts to /agents/apply', !!applyReq,
-        JSON.stringify(requests.map(r => r.url)));
-
-  const body = JSON.parse((applyReq && applyReq.opts.body) || '{}');
-  check('the payload carries client', body.client === 'claude-code', JSON.stringify(body));
-  check('the payload carries client_id too', body.client_id === 'claude-code', JSON.stringify(body));
-  check('the payload carries the gateway base_url',
-        body.base_url === 'http://127.0.0.1:8788/v1', JSON.stringify(body));
-  check('the payload carries a non-empty models list',
-        Array.isArray(body.models) && body.models.length === 2, JSON.stringify(body.models));
-  check('models are sent as bare ids',
-        body.models[0] === 'model-a' && body.models[1] === 'model-b',
-        JSON.stringify(body.models));
-  check('the payload carries the selected model',
-        body.model === 'model-a', JSON.stringify(body.model));
-  check('the payload carries the selected key id',
-        body.key_id === '__global', JSON.stringify(body.key_id));
-
-  requests.length = 0;
-  await api.restoreAgent('claude-code', null);
-  const restoreReq = requests.find(r => r.url.indexOf('/agents/restore') !== -1);
-  check('restoreAgent posts to /agents/restore', !!restoreReq,
-        JSON.stringify(requests.map(r => r.url)));
-  const restoreBody = JSON.parse((restoreReq && restoreReq.opts.body) || '{}');
-  check('the restore payload carries client',
-        restoreBody.client === 'claude-code', JSON.stringify(restoreBody));
-  check('the restore payload carries client_id too',
-        restoreBody.client_id === 'claude-code', JSON.stringify(restoreBody));
-
-  // 勾选功能带来的新契约：写进客户端的清单 = 勾选集合 ∩ 当前模型目录。
-  // 每次 apply 前都要重新喂卡片数据：applyAgent 的 finally 会 loadAgents()，
-  // 而第一个 fetch stub 把 clients 返回成空。
-  select(['model-b']);
-  requests.length = 0;
-  seed();
-  await api.applyAgent('claude-code', null);
-  const partialReq = requests.find(r => r.url.indexOf('/agents/apply') !== -1);
-  const partialBody = JSON.parse((partialReq && partialReq.opts.body) || '{}');
-  check('只勾选一个时 payload 只带那一个模型',
-        Array.isArray(partialBody.models) && partialBody.models.length === 1
-          && partialBody.models[0] === 'model-b',
-        JSON.stringify(partialBody.models));
-
-  CLIENTS.push({id: 'dsh', label: 'DeepSeek Harness', desc: 'DSH desktop',
-                protocol: 'openai', config_paths: ['/home/u/.dsh/settings.yaml'],
-                installed: true, applied: null});
-  // 先证明 dsh 被认成了客户端：有勾选时它照常发请求（否则下面的"被挡下"可能因别的
-  // 早退分支假通过）
-  select(['model-a']);
-  requests.length = 0;
-  seed();
-  await api.applyAgent('dsh', null);
-  check('有勾选时写模型清单的客户端照常发 /agents/apply',
-        !!requests.find(r => r.url.indexOf('/agents/apply') !== -1),
-        JSON.stringify(requests.map(r => r.url)));
-
-  // 一个都没勾：把模型清单写进自身配置的客户端（DSH / OpenCode / Crush / ZCode，
-  // 由后端 /agents 的 model_embedding_clients 声明）必须被挡下且不发请求；
-  // 不读这份清单的 Claude Code 照发，带空数组。
-  select([]);
-  requests.length = 0;
-  seed();
-  await api.applyAgent('dsh', null);
-  check('空勾选时嵌入模型清单的客户端被挡下，不发 /agents/apply',
-        !requests.some(r => r.url.indexOf('/agents/apply') !== -1),
-        JSON.stringify(requests.map(r => r.url)));
-
-  requests.length = 0;
-  seed();
-  await api.applyAgent('claude-code', null);
-  const noneReq = requests.find(r => r.url.indexOf('/agents/apply') !== -1);
-  const noneBody = JSON.parse((noneReq && noneReq.opts.body) || '{}');
-  check('不读模型清单的客户端不受影响，带空清单发出',
-        !!noneReq && Array.isArray(noneBody.models) && noneBody.models.length === 0,
-        JSON.stringify(noneBody.models));
-  CLIENTS.pop();   // 上面临时加的 dsh 卡片不留给后面的渲染断言
-  select(['model-a', 'model-b']);
+  window.location.origin = 'https://gateway.example:8443';
+  await api.loadAgentsAvailability();
+  await api.loadAgents();
+  check('download page uses the visitor-facing HTTPS address and port',
+        element('agentOpenAIUrl').textContent === 'https://gateway.example:8443/v1');
+  check('downloads do not probe the server or POST configuration', requests.length === 0);
+  check('Windows EXE is linked', html.includes('releases/download/windows-client/WorkBuddy-Setup.exe'));
+  check('no apply or restore function remains in the browser',
+        !/function (?:applyAgent|restoreAgent)\(/.test(script));
+  check('no browser request can apply or restore server configuration',
+        !/postJSON\(['"]\/agents\/(?:apply|restore)/.test(script));
+  check('login screen has a public setup link',
+        html.slice(html.indexOf('id="panelGate"'), html.indexOf('<main>')).includes('href="/agents/setup"'));
+  api.switchMainTab('agents');
+  check('remote users can open the agents tab', api.currentTab() === 'agents');
+  check('the tab is not hidden remotely', element('btnNavAgents').style.display !== 'none');
+  window.location.pathname = '/u/account-a/dashboard';
+  api.loadAgents();
+  check('pinned-account address is retained',
+        element('agentOpenAIUrl').textContent === 'https://gateway.example:8443/u/account-a/v1');
+  let copied = '';
+  navigator.clipboard = {writeText: async value => { copied = value; }};
+  await api.copyAgentUrl('agentOpenAIUrl', null);
+  check('copy uses the visitor address', copied === element('agentOpenAIUrl').textContent);
+  window.location.pathname = '/';
 
   // ---- 默认态契约：服务端没存过 = 全部勾选 ---------------------------------
   // 勾选这版之前，「一键配置」写的是整份目录。`agent_models` 还没落过时后端回
@@ -306,91 +218,6 @@ const check = (label, cond, extra) => {
 
   SELECTED.configured = true;
   select(['model-a', 'model-b']);
-
-  // The render path must run against a real /agents answer without throwing
-  // and must actually fill the card grid and the model picker.
-  global.fetch = (url, opts) => {
-    if (String(url).indexOf('/agents') !== -1) {
-      if (String(url).indexOf('/agents/model-selection') !== -1) {
-        const sel = {configured: true, selected_models: SELECTED.models.slice()};
-        requests.push({url: String(url), opts: opts || {}});
-        return Promise.resolve({status: 200, ok: true,
-          json: () => Promise.resolve(sel), text: () => Promise.resolve(JSON.stringify(sel))});
-      }
-      const payload = {
-        clients: CLIENTS.concat([{
-          id: 'codex', label: 'Codex CLI', desc: 'OpenAI Codex CLI',
-          protocol: 'openai', config_paths: ['/home/u/.codex/config.toml'],
-          installed: false, applied: {
-            at: '2026-10-09 07:27:30', base_url: 'http://127.0.0.1:8788/v1',
-            model: 'model-a', files: 2, external_change: true,
-          },
-        }]),
-        keys: [{id: 'key-1', name: '面板 Key', enabled: true}],
-        models: MODELS,
-        gateway: {base_url: 'http://127.0.0.1:8788/v1'},
-      };
-      requests.push({url: String(url), opts: opts || {}});
-      return Promise.resolve({
-        status: 200, ok: true,
-        json: () => Promise.resolve(payload),
-        text: () => Promise.resolve(JSON.stringify(payload)),
-      });
-    }
-    return realFetch(url, opts);
-  };
-
-  elements.forEach(el => { if (el) el.innerHTML = ''; });
-  await api.loadAgents();
-  const grid = element('agentCardGrid');
-  check('the card grid is rendered', /Claude Code/.test(grid.innerHTML || ''),
-        String(grid.innerHTML).slice(0, 160));
-  check('a not-installed client is marked as such',
-        /Codex CLI/.test(grid.innerHTML || ''), String(grid.innerHTML).slice(0, 160));
-  check('an applied client offers the restore button',
-        /restoreAgent/.test(grid.innerHTML || ''), String(grid.innerHTML).slice(0, 200));
-  check('an externally changed config raises the warning',
-        /外部修改|检测到外部修改/.test(grid.innerHTML || ''), String(grid.innerHTML).slice(0, 200));
-  const modelSel = element('agentModelSelect');
-  check('the model picker is populated',
-        /model-a/.test(modelSel.innerHTML || ''), String(modelSel.innerHTML).slice(0, 160));
-  const keySel = element('agentKeySelect');
-  check('the key picker is populated',
-        /key-1/.test(keySel.innerHTML || ''), String(keySel.innerHTML).slice(0, 160));
-
-  // 计数与卡片必须对得上（issue #250）：列表是全部支持的客户端，检测到的只是
-  // 其中一部分，所以标题要把两个数字都写出来，而不是只报「已检测到」的那个。
-  const detectState = element('agentDetectState');
-  check('检测计数同时给出卡片总数与本机检测数',
-        /1 \/ 共 2/.test(detectState.textContent || ''), detectState.textContent);
-
-  // An unknown client must not throw before the request is even built.
-  requests.length = 0;
-  await api.applyAgent('no-such-client', null);
-  check('an unknown client is a no-op, not a crash',
-        requests.filter(r => r.url.indexOf('/agents/apply') !== -1).length === 0);
-
-  // 服务端形态（看板不在网关本机）时入口整个撤掉（issue #246）：
-  // /agents/available 回 enabled:false → Tab 隐藏，?tab=agents 的书签退回网关页。
-  global.fetch = (url, opts) => {
-    if (String(url).indexOf('/agents/available') !== -1) {
-      const payload = {enabled: false};
-      return Promise.resolve({
-        status: 200, ok: true,
-        json: () => Promise.resolve(payload),
-        text: () => Promise.resolve(JSON.stringify(payload)),
-      });
-    }
-    return realFetch(url, opts);
-  };
-  const navAgents = element('btnNavAgents');
-  await api.loadAgentsAvailability();
-  check('a server-form panel hides the agents tab',
-        navAgents.style.display === 'none', JSON.stringify(navAgents.style));
-  check('the availability flag flips to false', api.agentsAvailable() === false);
-  api.switchMainTab('agents');
-  check('a stale agents tab falls back to the gateway page',
-        api.currentTab() === 'gateway', api.currentTab());
 
   process.stdout.write('agent config UI assertions passed (' + checks + ' checks)\n');
 })().catch(err => {

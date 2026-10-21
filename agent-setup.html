@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Windows 客户端配置 · WorkBuddy</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f8fafc; --card:#fff; --fg:#172033; --dim:#475569; --line:#cbd5e1; --accent:#1d4ed8; }
+    @media(prefers-color-scheme:dark) { :root { --bg:#111827; --card:#1f2937; --fg:#f1f5f9; --dim:#cbd5e1; --line:#475569; --accent:#93c5fd; } }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:24px; background:var(--bg); color:var(--fg); font:15px/1.7 system-ui,"Microsoft YaHei",sans-serif; }
+    main { max-width:780px; margin:0 auto; }
+    h1 { font-size:27px; line-height:1.35; margin:0 0 10px; }
+    h2 { font-size:18px; margin:0 0 12px; }
+    p { margin:8px 0; }
+    .muted { color:var(--dim); }
+    .card { margin-top:20px; padding:22px; border:1px solid var(--line); border-radius:14px; background:var(--card); }
+    .row { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    label { display:block; font-weight:600; margin-bottom:8px; }
+    input { flex:1; min-width:0; width:100%; padding:11px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); font:14px ui-monospace,monospace; }
+    button, .button { padding:10px 17px; border:1px solid var(--accent); border-radius:8px; background:transparent; color:var(--accent); font:inherit; cursor:pointer; text-decoration:none; transition:background 150ms; }
+    .primary { display:inline-block; background:#1d4ed8; border-color:#1d4ed8; color:white; font-weight:600; }
+    button:hover, .button:hover { background:#1d4ed81a; }
+    .primary:hover { background:#1e40af; }
+    :focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+    a { color:var(--accent); overflow-wrap:anywhere; }
+    ol { padding-left:24px; margin:0; }
+    li { padding:5px 0; }
+    code { overflow-wrap:anywhere; }
+    #copyStatus { min-height:26px; margin:4px 0 0; color:var(--dim); }
+    @media(max-width:480px) { body { padding:16px; } .card { padding:18px; } h1 { font-size:23px; } }
+    @media(prefers-reduced-motion:reduce) { button,.button { transition:none; } }
+  </style>
+</head>
+<body>
+<main>
+  <p class="muted">WorkBuddy · 客户端接入</p>
+  <h1>在你的 Windows 电脑上完成配置</h1>
+  <p class="muted">下载工具，选择客户端，输入自己的 API Key。配置在你的电脑上完成，原文件会自动备份。</p>
+  <section class="card" aria-labelledby="downloadTitle">
+    <h2 id="downloadTitle">Windows 配置工具</h2>
+    <p>支持 Windows 10 / 11（64 位），无需安装 Python，也无需管理员权限。</p>
+    <p>支持 Claude Code、Codex、OpenCode、DeepSeek Harness、Crush、ZCode。</p>
+    <p style="margin-top:18px"><a class="button primary" href="https://github.com/whysmx/workbuddy2api-hub/releases/download/windows-client/WorkBuddy-Setup.exe" id="downloadExe">下载 Windows EXE</a></p>
+    <p class="muted">下载后双击 <code>WorkBuddy-Setup.exe</code>，按窗口提示操作。请先安装你要使用的客户端。</p>
+    <a href="https://github.com/whysmx/workbuddy2api-hub/releases/tag/windows-client" target="_blank" rel="noopener noreferrer">发布记录与 SHA256 校验值</a>
+  </section>
+  <section class="card" aria-labelledby="addressTitle">
+    <h2 id="addressTitle">连接本网关</h2>
+    <label for="gatewayUrl">网关地址（复制到配置工具中）</label>
+    <div class="row">
+      <input id="gatewayUrl" type="text" readonly spellcheck="false" aria-describedby="addressHint">
+      <button id="copyUrl" type="button">复制地址</button>
+    </div>
+    <p id="copyStatus" role="status" aria-live="polite"></p>
+    <p id="addressHint" class="muted">请使用你的电脑能访问的域名或 IP。API Key 请向网关管理员获取，并在下载的工具中输入。</p>
+  </section>
+  <section class="card" aria-labelledby="stepsTitle">
+    <h2 id="stepsTitle">三步完成接入</h2>
+    <ol>
+      <li>双击 EXE，选择客户端，然后选择“配置客户端”。配置 ZCode 前，请先退出 ZCode。</li>
+      <li>粘贴上面的网关地址，输入 API Key，选择默认模型并确认。</li>
+      <li>看到“配置成功”后，重新启动客户端即可使用。</li>
+    </ol>
+    <p class="muted">需要恢复时，再次运行工具，选择对应客户端的“还原原始配置”。备份保存在当前用户的 <code>.wb-agent-config</code> 目录。</p>
+  </section>
+</main>
+<script>
+  // Derive the address in the browser so reverse-proxy HTTPS and port numbers
+  // match what the visitor actually used; never put keys in a URL or storage.
+  const field = document.getElementById('gatewayUrl');
+  const prefix = location.pathname.replace(/\/agents\/setup\/?$/, '').replace(/\/$/, '');
+  field.value = location.origin + prefix + '/v1';
+  document.getElementById('copyUrl').addEventListener('click', async function(){
+    const status = document.getElementById('copyStatus');
+    try {
+      if(!navigator.clipboard || !window.isSecureContext) throw new Error('clipboard unavailable');
+      await navigator.clipboard.writeText(field.value);
+      status.textContent = '地址已复制，请粘贴到配置工具中。';
+    } catch(e) {
+      field.focus(); field.select();
+      status.textContent = '已选中地址，请按 Ctrl+C 复制。';
+    }
+  });
+</script>
+</body>
+</html>

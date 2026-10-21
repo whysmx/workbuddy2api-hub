@@ -19,6 +19,60 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-client:
+    name: Windows client EXE
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: x64
+      - name: Install build dependencies
+        run: python -m pip install -r scripts/requirements-agent-build.txt
+      - name: Build self-contained EXE
+        run: python scripts/build_agent_setup.py
+      - name: Test EXE with no Python on PATH
+        run: python tests/_test_agent_setup.py --exe dist/agent-setup/WorkBuddy-Setup.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-client
+          path: dist/agent-setup/
+          if-no-files-found: error
+
+  publish-windows-client:
+    name: Publish Windows client after tests
+    needs: [test, windows-client]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.repository == 'whysmx/workbuddy2api-hub'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-client
+          path: client
+      - name: Update the Windows download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD_COMMIT: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'Windows 10/11 x64 免安装客户端配置工具，无需安装 Python。\n\nStandalone Windows client setup tool; no Python installation required.\n\nSource commit: %s\n' "$BUILD_COMMIT" > notes.md
+          if gh release view windows-client >/dev/null 2>&1; then
+            gh release edit windows-client --notes-file notes.md --prerelease --latest=false
+          else
+            gh release create windows-client --target "$BUILD_COMMIT" --title 'Windows 客户端配置工具 / Windows client setup' --notes-file notes.md --prerelease --latest=false
+          fi
+          gh release upload windows-client client/WorkBuddy-Setup.exe client/SHA256SUMS --clobber
+
   test:
     name: ${{ matrix.os }} / python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}

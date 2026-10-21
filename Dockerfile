@@ -10,7 +10,7 @@ WORKDIR /app
 RUN apk add --no-cache tzdata ca-certificates &&     cp /usr/share/zoneinfo/${TZ} /etc/localtime &&     echo "${TZ}" > /etc/timezone
 
 # Copy application files (Zero external pip dependencies needed)
-COPY wb_*.py dashboard.html ./
+COPY wb_*.py dashboard.html agent-setup.html ./
 
 # Create data directories
 RUN mkdir -p /app/accounts /app/usage

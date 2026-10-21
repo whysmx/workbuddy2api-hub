@@ -1,0 +1,3 @@
+# Build-only dependency; neither gateway nor downloaded EXE needs pip.
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9
