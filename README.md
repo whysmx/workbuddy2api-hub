@@ -153,7 +153,7 @@ python tests/run_all.py            # 全部套件
 python tests/run_all.py realm      # 只跑名字里含 realm 的
 ```
 
-- 205 个套件：153 个 Python + 52 个 JS；JS 需要 PATH 上有 `node`，缺失时会跳过并提示。
+- 206 个套件：154 个 Python + 52 个 JS；JS 需要 PATH 上有 `node`，缺失时会跳过并提示。
 - `tests/_mobile_check.py` 是独立的 Playwright 手机/桌面布局检查器（需自行安装 Playwright），按需手动运行，不在上面的套件集里。
 - CI（`.github/workflows/tests.yml`）跑同一条命令：Ubuntu 上 python 3.9 与 3.12（3.9 是本项目声称的最低版本），Windows 上 python 3.12；推送 `v*` tag 时额外断言 **tag == 源码版本**（`-ci` 演练 tag 豁免）。
 
@@ -233,9 +233,11 @@ Codex App 这类客户端会在 Responses 请求里声明 `web_search` / `web_fe
 - 某个搜寻引擎被限流／拦截时会自动轮换到下一家，只有全部不可用才把明确错误交给模型；常规引擎（DuckDuckGo / Bing）接手时对模型无感，Wikipedia / Stack Overflow / Google News 这类非常规来源会在结果里标明来源；
 - 只影响声明了这两个工具的客户端，普通 `/v1/chat/completions` 客户端不经过这条路径。
 
-### 8. 智能体一键配置
+### 8. Windows 客户端配置工具
 
-看板「智能体配置」页可检测本机已装的 AI 客户端，一键把它们的配置指向本网关，改前自动备份、随时字节级还原：
+看板「智能体配置」页现在提供 **Windows EXE 下载**，配置操作在访问者自己的电脑上完成。用户无需安装 Python，也无需管理后台密码。管理员可以直接分享 `https://<网关域名>/agents/setup`，登录页也有下载入口。
+
+用法：下载并双击 `WorkBuddy-Setup.exe` → 选择客户端 → 粘贴页面上的网关地址 → 输入自己的 API Key → 选择模型并确认 → 重启客户端。工具自动备份原配置，再次运行可选择还原。支持 Windows 10 / 11 x64：
 
 | 客户端 | 写入位置 | 协议 |
 | --- | --- | --- |
@@ -246,17 +248,17 @@ Codex App 这类客户端会在 Responses 请求里声明 `web_search` / `web_fe
 | Crush (Charm Crush) | `~/.config/crush/crush.json` | OpenAI 兼容 |
 | ZCode | `~/.zcode/v2/provider_config.json` | OpenAI 兼容（`openai-chat-completions`；**配置前先退出 ZCode**，运行中它会重写该文件） |
 
-用法：打开看板 →「智能体配置」→ 选 API Key（支持全局默认或绑定特定出口的多 Key）、默认模型与网关地址 → 在检测到的客户端卡片上点「一键配置」；随时可点「一键还原」。
+EXE 与下面的 Python CLI 共用 `wb_agents.py`，不会向网关上传本机配置文件。API Key 在本机隐藏输入，只用于请求该网关的模型列表并写入本机客户端配置。网页不再提供服务端一键配置或还原按钮；旧管理 API 保留认证与本机访问限制，供兼容用途。
 
-- **模型清单可控**：「网关与账号」页的「网关模型清单」每行模型 ID 前有一个复选框，**默认全部勾选**（从没动过勾选时等价于全量），表头另有「全选 / 全不选 / 反选」三个批量动作；只有勾选的模型才会被一键配置写进 DSH / OpenCode / Crush / ZCode 这类把模型清单抄进自身配置的客户端（Claude Code / Codex 不读这份清单，不受影响）。一个都没勾时，这几家的「一键配置」会直接拒绝并提示先勾选。勾选结果存在 `accounts/settings.json` 的 `agent_models` 里（对所有版本视图生效；字段缺失 = 从未保存 = 全量，空数组 = 明确全不选，两者语义不同），改完需要重新一键配置并重启对应客户端才生效；
+- **模型选择**：本机工具使用自己的 API Key 请求 `/v1/models`，让用户选择默认模型，并把网关返回的模型清单写入支持模型列表的客户端。面板原有的模型勾选设置仅供旧管理 API 使用，不控制本机工具；
 - **非侵入**：纯标准库实现的文本级 YAML / TOML / JSON / .env 编辑器，只增量插入或更新 `wb-proxy` 那段，绝不重排或抹掉用户的注释、缩进与其他 provider 配置；
-- **可回滚**：写入前自动备份到 `accounts/agent-backups/<客户端ID>/`（每文件保留最新 10 份），首次接入的原件永久保留；多文件客户端（DSH、Codex）两阶段写入，任一文件失败立即回退；
-- **还原**：byte-exact 回到首次接入前，网关新建的文件会被清理；若之后手动改过配置，看板会提示「检测到外部修改」，还原仍会覆盖回原件；
+- **可回滚**：本机工具写入前自动备份到当前用户的 `~/.wb-agent-config/agent-backups/<客户端ID>/`（每文件保留最新 10 份），首次接入的原件永久保留；多文件客户端（DSH、Codex）两阶段写入，任一文件失败立即回退；
+- **还原**：按原始字节恢复至首次接入前，工具新建的文件会被清理；还原前需要确认，之后手动修改的内容也会被覆盖回原件；
 - **密钥安全**：API Key 只写进客户端自己的本地配置目录（权限仅限当前系统用户），单文件超过 8MB 拒绝编辑。
 
 **DSH：思考档位、上下文窗口、识图与限流重试写在哪**（`~/.dsh/profiles/<profile>/cordis.patch.yml`）
 
-当前 DSH 只在首次启动时导入一次 `~/.dsh/settings.yaml`，随后改名 `settings.yaml.imported`，之后不再读它；桌面版 / Web 版真正生效的是各自 profile 的 `cordis.patch.yml`。一键配置因此直接写这一层（`~/.dsh/settings.yaml` 只在它本来就有、或机器上还没有 profile 时写入）。给 DSH 写的每个模型条目都带上网关宣告的规格，DSH 会据此生成它自己的选择器：
+当前 DSH 只在首次启动时导入一次 `~/.dsh/settings.yaml`，随后改名 `settings.yaml.imported`，之后不再读它；桌面版 / Web 版真正生效的是各自 profile 的 `cordis.patch.yml`。本机配置工具因此直接写这一层（`~/.dsh/settings.yaml` 只在它本来就有、或机器上还没有 profile 时写入）。给 DSH 写的每个模型条目都带上网关宣告的规格，DSH 会据此生成它自己的选择器：
 
 ```yaml
     wb-proxy:
@@ -285,7 +287,7 @@ Codex App 这类客户端会在 Responses 请求里声明 `web_search` / `web_fe
 - **限流重试（「对话到一半链接中断」的根因）**：DSH 对失败请求的重试由每个 provider 自己的 `retryPolicy` 决定，默认 normal 模式、最多 5 次、退避 500ms 起按 2 倍翻、封顶 10s——五次加起来不到 16 秒。WorkBuddy 的模型冷却（429）通常要一分钟，DSH 在冷却结束前就把重试次数用光，回合以 `RATE_LIMIT` 失败，客户端看到的就是对话中途断掉。一键配置因此给 `wb-proxy` 单独放宽成最多 8 次、退避 2s 起、封顶 30s（合计约 2 分半），足够熬过一次 60 秒冷却。字段名与取值范围按 `@deepseek-ai/dsh-llm` 的 `RetryPolicySchema`；不写 `retryableCodes`，沿用 DSH 默认（`EMPTY_RESPONSE` / `RATE_LIMIT` / `SERVER` / `TIMEOUT` / `TRANSPORT`，429 落在 `RATE_LIMIT`）。只影响 `wb-proxy`，其它 provider 仍是默认策略；已经接入过的机器重新点一次「一键配置」补上这段（幂等），重启 DSH 生效。
 - **注意 profile 覆盖层**：`$DSH_HOME/profiles/<profile>/cordis.patch.yml` 里的 `- id: llm-pi-ai` 条目会**整体替换**该插件的配置（不是逐键合并）。一键配置现在直接更新 patch 层里的这一条：只替换 `wb-proxy` 那段，其他 provider（如 `qwen-token-plan-cn`）、其他条目与注释原样保留，所以不会再出现「写进 `settings.yaml` 被 patch 盖住、不生效」的情况。
 
-**在另一台机器上接入（远程 / 非本机）**：看板的一键配置运行在网关进程里，改的是**网关所在机器**的配置目录——所以它只在网关本机、且用 `127.0.0.1` 打开看板时可用（远程访问、容器 / OpenWrt 部署下按设计隐藏入口）。客户端装在别的电脑（网关跑在服务器 / NAS / 路由器上）时，改用自带的配置器 CLI：它在**客户端所在的机器**上运行，写本机配置、只通过 HTTP 从网关取模型表：
+**已有 Python 环境的高级用户**也可以使用原有 CLI。它与 Windows EXE 一样在客户端电脑上运行，写入该电脑的配置，只通过 HTTP 从网关获取模型表：
 
 ```bash
 # 1. 取配置器（网关直接提供该文件；也可从仓库 / 绿色包复制 wb_agents.py）
@@ -443,6 +445,7 @@ export ANTHROPIC_API_KEY="你在看板设置中添加并绑定的API_Key"
 | POST | /pricing/mapping | 手填 / 清除「模型 → OpenRouter id」运行期映射，随后自动取价（需面板会话） |
 | GET | /agents | 客户端探测概览、支持的模型清单及网关连接地址 |
 | GET | /agents/cli | 智能体配置器源码（供远程机器直接 `curl` 取用，免面板鉴权；与仓库内 `wb_agents.py` 逐字节一致） |
+| GET | /agents/setup | Windows 客户端 EXE 下载和接入说明（公开静态页面，无需面板密码） |
 | POST | /agents/apply | 一键写入客户端配置并备份原件（需面板会话） |
 | POST | /agents/restore | 一键还原客户端至首次配置前的状态（需面板会话） |
 | GET | /tasks | 国内版成长任务、连续打卡与猫猫日常状态 |
@@ -461,6 +464,8 @@ export ANTHROPIC_API_KEY="你在看板设置中添加并绑定的API_Key"
 <!-- 发版时：把下面的 Unreleased 段落整理成新版本号（## vX.Y.Z），整体移入 docs/CHANGELOG.md 顶部 -->
 
 ### Unreleased
+
+- **Windows 客户端免 Python 配置工具**：网页「智能体配置」改为 EXE 下载和连接地址，远程访问也可见；新增公开 `/agents/setup` 说明页及登录页下载入口。中文工具在用户电脑上检测六种客户端、验证 API Key、选择模型、备份配置并支持还原，复用原有 Python 配置逻辑。PR 检查构建并实测独立 EXE，main 全矩阵通过后发布到独立 `windows-client` 预发布，不改变网关正式版的 latest release。 / The agent page now offers a standalone Windows x64 EXE and the visitor-facing gateway URL. A public setup guide is linked from login. The local wizard reuses all six client adapters with key validation, model selection, backups and restore. CI exercises the frozen EXE without Python on PATH; a passing main matrix publishes a separate non-latest Windows-client prerelease.
 
 - **11-128：身份句渠道指纹的动词搭配补全**：v1.7.18 的正则只认 `agent powered by` / `assistant built on` 两种搭配，而同一判据下的 `built by`（如 `You are <Product> Agent, built by <Vendor>.`）、`created by` / `developed by` / `made by` / `trained by`，以及省略名词的 `You are powered by …` 都会漏检——上游只要补其中一条规则，这些句子就会重新命中 400 / 11-128。现按同一判据补全动词表：名词可省略、冠词后允许 0~3 个修饰词（专名 + 可选逗号）；`You are free to use tools built by …` 这类分词修饰宾语的句子保持不改写。新增 5 项断言（built by 变体、其余动词、省略名词、反误伤、角色作用域）。 / Broaden the identity-sentence channel fingerprint: v1.7.18 only matched `agent powered by` / `assistant built on`, so `built by` (`You are <Product> Agent, built by <Vendor>.`), `created by` / `developed by` / `made by` / `trained by`, and the noun-less `You are powered by …` slipped through — one rule added upstream would put them back on 400 / 11-128. The same rule now covers those verb forms, with an optional noun and up to three modifiers (proper names plus an optional comma), while participles modifying an object (`You are free to use tools built by …`) stay untouched. Five assertions added.
 - **网页活跃重试等待改为线性递增**：第 N 轮等待从「首轮 × 2^(N-1)」改为「首轮 × N」，默认 3 次从 120 / 240 / 480 秒变为 120 / 240 / 360 秒；最坏占用从指数级降到线性级。设置页说明同步更新。新增 4 项单测。 / The web-channel retry wait now grows linearly: round N waits base × N instead of base × 2^(N-1), so the default three tries are 120 / 240 / 360 seconds instead of 120 / 240 / 480. The worst case is linear rather than exponential. Covered by 4 new tests.

@@ -82,6 +82,7 @@ define Package/workbuddy2api/install
 	$(INSTALL_DIR) $(1)/usr/lib/workbuddy2api
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/usr/lib/workbuddy2api/wb_*.py $(1)/usr/lib/workbuddy2api/
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/usr/lib/workbuddy2api/dashboard.html $(1)/usr/lib/workbuddy2api/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/usr/lib/workbuddy2api/agent-setup.html $(1)/usr/lib/workbuddy2api/
 	$(INSTALL_DIR) $(1)/usr/bin
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/usr/bin/workbuddy2api-warm $(1)/usr/bin/workbuddy2api-warm
 	$(INSTALL_DIR) $(1)/etc/init.d

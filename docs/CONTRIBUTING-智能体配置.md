@@ -2,6 +2,8 @@
 
 本文档面向 `workbuddy2api-hub` 维护者与社区贡献者，详细说明 `wb_agents.py` 智能体一键配置模块的设计思想、内部实现机制、数据存储格式，以及如何新增支持一款新的 AI 客户端。
 
+本 fork 的网页入口已改为 Windows EXE 下载，交互向导为 `wb_agent_setup.py`，公开说明页为 `/agents/setup`。下文的服务端 apply/restore API 为兼容接口，网页不再调用。Windows 打包、验证与发布说明见 [WINDOWS-CLIENT-SETUP.md](WINDOWS-CLIENT-SETUP.md)。
+
 ---
 
 ## 1. 核心设计原则

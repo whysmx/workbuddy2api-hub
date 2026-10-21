@@ -435,6 +435,16 @@ request.do_GET()
 check("the neighbouring /agents read still needs the panel session",
       request.status == 401, request.status)
 
+request = CliDispatch("/agents/setup")
+request.client_address = ("203.0.113.42", 12345)
+request.do_GET()
+with open(os.path.join(ROOT, "agent-setup.html"), "rb") as fh:
+    guide = fh.read()
+check("remote Windows setup guide needs no panel session", request.status == 200)
+check("public guide serves only the static download page", request.wfile.getvalue() == guide)
+check("public guide links the standalone EXE", b"WorkBuddy-Setup.exe" in guide)
+check("public guide does not request management keys", b"/settings/reveal" not in guide)
+
 # ---------------------------------------------------------------------------
 _gateway.shutdown()
 shutil.rmtree(TMP, ignore_errors=True)

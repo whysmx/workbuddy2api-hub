@@ -18093,6 +18093,8 @@ class Handler(BaseHTTPRequestHandler):
         # same wb_agents.py shipped in the repository, no secrets inside).
         if path == "/agents/cli":
             return self._get_agents_cli()
+        if path == "/agents/setup":
+            return self._get_agents_setup()
         if self._is_panel_route(path) and not self._panel_ok():
             return self._error(401, "panel password required", "invalid_request_error")
         if path in ("/", "/dashboard", "/ui"):
@@ -19642,6 +19644,23 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass
         return models
+
+    def _get_agents_setup(self):
+        """Public Windows download guide, independent of panel credentials."""
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "agent-setup.html")
+        try:
+            with open(path, "rb") as fh:
+                body = fh.read()
+        except OSError as exc:
+            return self._error(503, "Windows setup guide unavailable: %s" % exc)
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _get_agents_cli(self):
         """Serve wb_agents.py so a remote machine can fetch the configurator.

@@ -66,6 +66,7 @@ for f in "$APP_SRC"/wb_*.py; do
 	cp "$f" "$DST/"
 done
 cp "$APP_SRC/dashboard.html" "$DST/"
+cp "$APP_SRC/agent-setup.html" "$DST/"
 ls "$DST" | wc -l | xargs echo "    文件数:"
 
 # ---- 3. 拷进 SDK ------------------------------------------------------------
